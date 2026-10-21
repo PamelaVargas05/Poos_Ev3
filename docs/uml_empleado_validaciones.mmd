@@ -1,0 +1,30 @@
+classDiagram
+    class Empleado {
+        <<base>>
+        +TIPO: str
+        +MIN_NOMBRE: int = 2
+        +MAX_NOMBRE: int = 100
+        +MIN_CORREO: int = 6
+        +MAX_CORREO: int = 150
+        +id: int
+        +nombre: str
+        -_correo: str
+        +validar_nombre(nombre: str)$ str
+        +validar_correo(correo: str)$ str
+        +cambiar_correo(nuevo_correo: str) None
+        +calcular_salario() float
+        +obtener_detalles() str
+    }
+
+    class EmpleadoPlanta {
+        +bono_anual: float
+        +calcular_salario() float
+    }
+
+    class EmpleadoContrata {
+        +tarifa_hora: float
+        +calcular_salario() float
+    }
+
+    Empleado <|-- EmpleadoPlanta
+    Empleado <|-- EmpleadoContrata

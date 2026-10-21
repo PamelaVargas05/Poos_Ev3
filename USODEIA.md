@@ -5,6 +5,21 @@ manejo de excepciones y coherencia entre relaciones UML y base de datos.
 
 Las sugerencias fueron revisadas y probadas antes de incorporarlas.
 
+## Actividad 1 de Unidad 3
+
+Se utilizó IA como apoyo para revisar las validaciones de `Empleado`, comparar
+los límites con el esquema real de MariaDB y proponer una función reutilizable
+de entrada en `main.py`. La decisión final fue conservar `VARCHAR(120)` para
+nombre y `VARCHAR(150)` para correo sin modificar la base de datos, usando
+límites de dominio de 100 y 150 caracteres respectivamente.
+
+También se utilizó IA para estructurar el diagrama Mermaid adicional
+[`docs/uml_empleado_validaciones.mmd`](docs/uml_empleado_validaciones.mmd),
+sin reemplazar los diagramas de imagen existentes. La implementación fue
+revisada con pruebas locales de validación, constructor, cambio de correo,
+reintentos y compilación de `src`. No se ejecutaron semillas ni se insertaron
+nuevos empleados.
+
 ## Adaptación de persistencia a MariaDB
 
 Se utilizó IA como apoyo para revisar y adaptar la persistencia del proyecto.
@@ -67,3 +82,24 @@ Las consultas posteriores en MariaDB 11.5.2 confirmaron en ambas ejecuciones:
 - Ningún empleado sin departamento después de la asignación autorizada.
 
 No se utilizaron `DROP`, `DELETE` ni `TRUNCATE`.
+
+## Actividad 2 de Unidad 3
+
+Se utilizó IA como apoyo para separar la consulta HTTPS de la presentación
+del menú, definir la validación defensiva de la respuesta JSON y preparar
+pruebas simuladas de errores. La decisión fue crear
+`src/servicios/indicadores_api.py`, sin agregar SQL ni persistencia del
+indicador.
+
+La implementación fue revisada contra los requisitos de la presentación:
+`requests.get()` con `timeout=(3, 5)`, `raise_for_status()`, TLS habilitado
+por defecto, validación de `codigo`, `unidad_medida`, `serie`, fechas y valores
+finitos positivos. Para no asumir el orden de la API, se selecciona la fecha
+más reciente después de validar todos los registros.
+
+También se utilizó IA para revisar la integración mínima de la opción 5 del
+menú y el manejo de errores sin traceback. Las pruebas reales y simuladas se
+mantuvieron diferenciadas en la documentación. La consulta real realizada
+devolvió `978.56` CLP por USD para `2026-10-21`, desde `mindicador.cl`.
+La revisión de MariaDB fue de solo lectura: confirmó 20 empleados y no se
+ejecutaron semillas ni se insertaron o modificaron registros.

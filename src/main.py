@@ -7,6 +7,8 @@ from dominio.departamento import Departamento
 from dominio.empleado import Empleado, EmpleadoPlanta, EmpleadoContrata
 from dominio.proyecto import Proyecto
 from dominio.registro_tiempo import RegistroTiempo
+from servicios.indicadores_api import consultar_dolar
+import requests
 
 
 def pedir_entero(mensaje, permitir_vacio=False):
@@ -35,27 +37,27 @@ def pedir_float(mensaje, minimo=0.0, permitir_vacio=False):
             print("Debe ingresar un número válido.")
 
 
-def pedir_nombre_empleado():
+def pedir_dato(mensaje, validador):
     while True:
-        nombre = input("Nombre: ").strip()
-        if len(nombre) < 2:
-            print("El nombre es obligatorio y debe tener al menos 2 caracteres.")
-            continue
-        return nombre
-
-
-def pedir_correo_empleado():
-    while True:
-        correo = input("Correo: ").strip().lower()
         try:
-            Empleado._validar_correo(correo)
-        except ValueError as exc:
-            print(f"Correo inválido: {exc}")
-            continue
-        if EmpleadoDAO.buscar_por_correo(correo) is not None:
-            print("Ese correo ya está registrado. Ingrese otro correo.")
-            continue
-        return correo
+            return validador(input(mensaje))
+        except (TypeError, ValueError) as exc:
+            print(f"Dato inválido: {exc}")
+
+
+def validar_correo_nuevo(correo):
+    correo = Empleado.validar_correo(correo)
+    if EmpleadoDAO.buscar_por_correo(correo) is not None:
+        raise ValueError("Ese correo ya está registrado. Ingrese otro correo.")
+    return correo
+
+
+def validar_correo_actualizado(correo, id_empleado):
+    correo = Empleado.validar_correo(correo)
+    existente = EmpleadoDAO.buscar_por_correo(correo)
+    if existente is not None and existente.id != id_empleado:
+        raise ValueError("Ese correo ya está registrado. Ingrese otro correo.")
+    return correo
 
 
 def listar_departamentos():
@@ -65,6 +67,19 @@ def listar_departamentos():
         return
     for item in items:
         print(item)
+
+
+def mostrar_dolar_observado():
+    try:
+        indicador = consultar_dolar()
+        print(
+            f"Dólar observado: ${indicador.valor:,.2f} CLP por USD | "
+            f"Fecha: {indicador.fecha.isoformat()} | Fuente: mindicador.cl"
+        )
+    except requests.RequestException as exc:
+        print(f"No fue posible consultar el dólar por un problema de red o HTTP: {exc}")
+    except ValueError as exc:
+        print(f"No fue posible validar la respuesta del dólar: {exc}")
 
 
 def menu_departamentos():
@@ -105,8 +120,8 @@ def menu_departamentos():
 
 
 def crear_empleado_desde_entrada():
-    nombre = pedir_nombre_empleado()
-    correo = pedir_correo_empleado()
+    nombre = pedir_dato("Nombre: ", Empleado.validar_nombre)
+    correo = pedir_dato("Correo: ", validar_correo_nuevo)
     telefono = input("Teléfono (opcional): ").strip()
     salario = pedir_float("Salario base: ", minimo=0)
     while True:
@@ -156,9 +171,15 @@ def menu_empleados():
                 if emp is None:
                     print("Empleado no encontrado.")
                     continue
-                correo = input(f"Nuevo correo [{emp.correo}]: ").strip()
-                if correo:
-                    emp.cambiar_correo(correo)
+                correo = pedir_dato(
+                    f"Nuevo correo [{emp.correo}] (Enter = mantener): ",
+                    lambda valor: (
+                        emp.correo
+                        if not valor.strip()
+                        else validar_correo_actualizado(valor, emp.id)
+                    ),
+                )
+                emp.cambiar_correo(correo)
                 dep = pedir_entero("Nuevo ID departamento (Enter = mantener): ", permitir_vacio=True)
                 if dep is not None:
                     emp.departamento_id = dep
@@ -294,6 +315,7 @@ def main():
         print("2. Departamentos")
         print("3. Proyectos")
         print("4. Registros de tiempo")
+        print("5. Consultar dólar observado")
         print("0. Salir")
         opcion = input("Seleccione una opción: ").strip()
         if opcion == "1":
@@ -304,6 +326,8 @@ def main():
             menu_proyectos()
         elif opcion == "4":
             menu_registros()
+        elif opcion == "5":
+            mostrar_dolar_observado()
         elif opcion == "0":
             print("Hasta luego.")
             break
