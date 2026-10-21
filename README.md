@@ -1,6 +1,6 @@
 # EcoTech EV3
 
-Proyecto individual de Programación Orientada a Objetos Seguro, basado en
+Proyecto individual, basado en
 EcoTech EV2 y desarrollado con Python y MariaDB.
 
 Incluye:

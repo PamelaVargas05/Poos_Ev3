@@ -64,7 +64,7 @@ def crear_tablas():
             SELECT COUNT(*)
             FROM information_schema.REFERENTIAL_CONSTRAINTS
             WHERE CONSTRAINT_SCHEMA = DATABASE()
-              AND CONSTRAINT_NAME = 'fk_empleado_departamento'
+            AND CONSTRAINT_NAME = 'fk_empleado_departamento'
             """
         )
         if cursor.fetchone()[0] == 0:
