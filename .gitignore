@@ -1,0 +1,24 @@
+# Entorno virtual
+.venv/
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Variables sensibles
+.env
+
+# Repositorios fuente anidados
+/EcoTech_EV2_base/
+/Poos_Ev3/
+
+# Configuración local del editor
+.vscode/
+
+# Archivos temporales
+*.log
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
