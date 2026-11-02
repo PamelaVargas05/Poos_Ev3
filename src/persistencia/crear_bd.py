@@ -40,9 +40,73 @@ def crear_tablas():
             ) ENGINE=InnoDB
             """,
         ]
-
         for sql in sentencias:
             cursor.execute(sql)
+
+        # Tabla para el acceso seguro de la Unidad 3.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuario (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                nombre_usuario VARCHAR(30) NOT NULL UNIQUE,
+                sal CHAR(32) NOT NULL,
+                clave_hash CHAR(64) NOT NULL,
+                empleado_id INT NULL,
+                rol VARCHAR(10) NOT NULL DEFAULT 'empleado',
+                CONSTRAINT ck_usuario_rol CHECK (rol IN ('admin', 'empleado')),
+                CONSTRAINT fk_usuario_empleado FOREIGN KEY (empleado_id)
+                    REFERENCES empleado(id) ON UPDATE CASCADE ON DELETE SET NULL
+            ) ENGINE=InnoDB
+        """)
+
+        cursor.execute(
+            """
+            SELECT COLUMN_NAME
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuario'
+            """
+        )
+        columnas_usuario = {fila[0] for fila in cursor.fetchall()}
+        if "empleado_id" not in columnas_usuario:
+            cursor.execute("ALTER TABLE usuario ADD COLUMN empleado_id INT NULL")
+        if "rol" not in columnas_usuario:
+            cursor.execute(
+                "ALTER TABLE usuario ADD COLUMN rol VARCHAR(10) "
+                "NOT NULL DEFAULT 'empleado'"
+            )
+        cursor.execute(
+            "UPDATE usuario SET rol = 'empleado' "
+            "WHERE rol IS NULL OR rol NOT IN ('admin', 'empleado')"
+        )
+        cursor.execute(
+            """
+            SELECT CONSTRAINT_NAME
+            FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuario'
+              AND CONSTRAINT_NAME = 'fk_usuario_empleado'
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                """
+                ALTER TABLE usuario ADD CONSTRAINT fk_usuario_empleado
+                FOREIGN KEY (empleado_id) REFERENCES empleado(id)
+                ON UPDATE CASCADE ON DELETE SET NULL
+                """
+            )
+        cursor.execute(
+            """
+            SELECT CONSTRAINT_NAME
+            FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuario'
+              AND CONSTRAINT_NAME = 'ck_usuario_rol'
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "ALTER TABLE usuario ADD CONSTRAINT ck_usuario_rol "
+                "CHECK (rol IN ('admin', 'empleado'))"
+            )
+
 
         # Normaliza instalaciones anteriores que tenían tablas MyISAM o columnas antiguas.
         cursor.execute("ALTER TABLE departamento ENGINE=InnoDB")

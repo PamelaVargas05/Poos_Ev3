@@ -2,13 +2,37 @@ from persistencia.crear_bd import crear_tablas
 from persistencia.departamento_dao import DepartamentoDAO
 from persistencia.empleado_dao import EmpleadoDAO
 from persistencia.proyecto_dao import ProyectoDAO
-from persistencia.registro_tiempo_dao import RegistroTiempoDAO
 from dominio.departamento import Departamento
 from dominio.empleado import Empleado, EmpleadoPlanta, EmpleadoContrata
 from dominio.proyecto import Proyecto
 from dominio.registro_tiempo import RegistroTiempo
 from servicios.indicadores_api import consultar_dolar
 import requests
+import pymysql
+from getpass import getpass
+
+from persistencia.usuario_dao import UsuarioDAO
+from servicios.empleados import (
+    actualizar_datos_propios,
+    consultar_datos_propios,
+)
+from servicios.permisos import exigir_admin, exigir_sesion
+from servicios.registros import (
+    actualizar_registro,
+    buscar_registro,
+    eliminar_registro,
+    insertar_registro,
+    listar_registros,
+    listar_registros_propios,
+    registrar_registro_propio,
+    total_horas_por_proyecto,
+)
+from seguridad.autenticacion import (
+    validar_usuario,
+    validar_clave,
+    crear_hash,
+    verificar_clave,
+)
 
 
 def pedir_entero(mensaje, permitir_vacio=False):
@@ -76,13 +100,33 @@ def mostrar_dolar_observado():
             f"Dólar observado: ${indicador.valor:,.2f} CLP por USD | "
             f"Fecha: {indicador.fecha.isoformat()} | Fuente: mindicador.cl"
         )
-    except requests.RequestException as exc:
-        print(f"No fue posible consultar el dólar por un problema de red o HTTP: {exc}")
+    except requests.Timeout:
+        print(
+            "El servicio del dólar tardó demasiado en responder. "
+            "Intente nuevamente más tarde."
+        )
+    except requests.ConnectionError:
+        print(
+            "No fue posible conectarse al servicio del dólar. "
+            "Revise su conexión e intente nuevamente."
+        )
+    except requests.HTTPError as exc:
+        estado = exc.response.status_code if exc.response is not None else "desconocido"
+        print(
+            f"El servicio del dólar no está disponible (respuesta HTTP {estado}). "
+            "Intente nuevamente más tarde."
+        )
+    except requests.RequestException:
+        print(
+            "Ocurrió un problema de comunicación con el servicio del dólar. "
+            "La aplicación continuará funcionando."
+        )
     except ValueError as exc:
         print(f"No fue posible validar la respuesta del dólar: {exc}")
 
 
-def menu_departamentos():
+def menu_departamentos(sesion):
+    exigir_admin(sesion)
     while True:
         print("\n--- DEPARTAMENTOS ---")
         print("1. Crear")
@@ -138,7 +182,8 @@ def crear_empleado_desde_entrada():
     return Empleado(**comunes)
 
 
-def menu_empleados():
+def menu_empleados(sesion):
+    exigir_admin(sesion)
     while True:
         print("\n--- EMPLEADOS ---")
         print("1. Registrar empleado")
@@ -196,7 +241,8 @@ def menu_empleados():
             print(f"Error de base de datos / sistema: {exc}")
 
 
-def menu_proyectos():
+def menu_proyectos(sesion):
+    exigir_admin(sesion)
     while True:
         print("\n--- PROYECTOS ---")
         print("1. Crear proyecto")
@@ -247,7 +293,8 @@ def menu_proyectos():
             print(f"Error de base de datos / sistema: {exc}")
 
 
-def menu_registros():
+def menu_registros(sesion):
+    exigir_admin(sesion)
     while True:
         print("\n--- REGISTROS DE TIEMPO ---")
         print("1. Registrar horas")
@@ -265,16 +312,16 @@ def menu_registros():
                     horas=pedir_float("Horas: ", minimo=0.01),
                     descripcion=input("Descripción tarea: ").strip(),
                 )
-                RegistroTiempoDAO.insertar(r)
+                insertar_registro(sesion, r)
                 print(f"Registro creado con ID {r.id}.")
             elif op == "2":
-                items = RegistroTiempoDAO.listar()
+                items = listar_registros(sesion)
                 if not items:
                     print("No hay registros.")
                 for item in items:
                     print(item)
             elif op == "3":
-                r = RegistroTiempoDAO.buscar_por_id(pedir_entero("ID registro: "))
+                r = buscar_registro(sesion, pedir_entero("ID registro: "))
                 if not r:
                     print("Registro no encontrado.")
                     continue
@@ -284,12 +331,16 @@ def menu_registros():
                 desc = input(f"Descripción [{r.descripcion}]: ").strip()
                 if desc:
                     r.descripcion = desc
-                print("Actualizado." if RegistroTiempoDAO.actualizar(r) else "Sin cambios.")
+                print("Actualizado." if actualizar_registro(sesion, r) else "Sin cambios.")
             elif op == "4":
-                print("Eliminado." if RegistroTiempoDAO.eliminar(pedir_entero("ID: ")) else "No encontrado.")
+                print(
+                    "Eliminado."
+                    if eliminar_registro(sesion, pedir_entero("ID: "))
+                    else "No encontrado."
+                )
             elif op == "5":
                 id_p = pedir_entero("ID proyecto: ")
-                print(f"Total de horas: {RegistroTiempoDAO.horas_por_proyecto(id_p):.2f}")
+                print(f"Total de horas: {total_horas_por_proyecto(sesion, id_p):.2f}")
             elif op == "0":
                 return
             else:
@@ -298,6 +349,123 @@ def menu_registros():
             print(f"Error de validación: {exc}")
         except Exception as exc:
             print(f"Error de base de datos / sistema: {exc}")
+
+
+def registrar_cuenta_empleado(sesion):
+    exigir_admin(sesion)
+    empleados = EmpleadoDAO.listar()
+    if not empleados:
+        print("No hay empleados registrados para asociar una cuenta.")
+        return
+    print("\n--- REGISTRAR CUENTA DE EMPLEADO ---")
+    empleado_id = pedir_entero("ID del empleado: ")
+    if EmpleadoDAO.buscar_por_id(empleado_id) is None:
+        print("Empleado no encontrado.")
+        return
+    usuario = validar_usuario(input("Nombre de usuario: "))
+    if UsuarioDAO.buscar(usuario) is not None:
+        print("Ese nombre de usuario ya existe.")
+        return
+    clave = validar_clave(getpass("Contraseña: "))
+    if clave != getpass("Repita la contraseña: "):
+        print("Las contraseñas no coinciden.")
+        return
+    sal, clave_hash = crear_hash(clave)
+    UsuarioDAO.guardar(usuario, sal, clave_hash, empleado_id=empleado_id)
+    print("Cuenta de empleado creada correctamente.")
+
+
+def iniciar_sesion():
+    """Exige credenciales válidas antes de acceder al menú principal."""
+    print("\n===== ACCESO A ECOTECH =====")
+
+    for _ in range(3):
+        try:
+            nombre = input("Usuario: ")
+            clave = getpass("Contraseña: ")
+        except EOFError:
+            print("\nEntrada finalizada. Hasta luego.")
+            return None
+
+        try:
+            usuario = validar_usuario(nombre)
+        except ValueError:
+            print("Usuario o contraseña incorrectos.")
+            continue
+
+        registro = UsuarioDAO.buscar(usuario)
+        if registro is not None and verificar_clave(
+            clave, registro.sal, registro.password_hash
+        ):
+            print("Acceso autorizado.")
+            return {
+                "id": registro.id,
+                "empleado_id": registro.empleado_id,
+                "nombre_usuario": registro.nombre_usuario,
+                "rol": registro.rol,
+            }
+
+        print("Usuario o contraseña incorrectos.")
+
+    print("Acceso bloqueado en esta ejecución: tres intentos fallidos.")
+    return None
+
+
+def menu_empleado(sesion):
+    exigir_sesion(sesion)
+    while True:
+        print("\n--- MI CUENTA ---")
+        print("1. Consultar mis datos")
+        print("2. Modificar nombre y correo")
+        print("3. Consultar mis registros")
+        print("4. Registrar trabajo realizado")
+        print("5. Cerrar sesión")
+        print("6. Volver")
+        opcion = input("Seleccione una opción: ").strip()
+        try:
+            if opcion == "1":
+                print(consultar_datos_propios(sesion))
+            elif opcion == "2":
+                empleado = consultar_datos_propios(sesion)
+                if empleado is None:
+                    print("La cuenta no está asociada a un empleado.")
+                    continue
+                nombre = input(f"Nombre [{empleado.nombre}]: ").strip() or empleado.nombre
+                correo = input(f"Correo [{empleado.correo}]: ").strip() or empleado.correo
+                actualizar_datos_propios(sesion, nombre, correo)
+                print("Datos actualizados.")
+            elif opcion == "3":
+                registros = listar_registros_propios(sesion)
+                if not registros:
+                    print("No tienes registros.")
+                for registro in registros:
+                    print(registro)
+            elif opcion == "4":
+                proyectos = ProyectoDAO.listar()
+                if not proyectos:
+                    print("No hay proyectos disponibles para registrar trabajo.")
+                    continue
+                print("Proyectos disponibles:")
+                for proyecto in proyectos:
+                    print(proyecto)
+                proyecto_id = pedir_entero("ID proyecto: ")
+                fecha = input(
+                    "Fecha (AAAA-MM-DD, Enter = hoy): "
+                ).strip()
+                horas = pedir_float("Horas: ", minimo=0.01)
+                descripcion = input("Descripción del trabajo: ").strip()
+                registro = registrar_registro_propio(
+                    sesion, proyecto_id, fecha, horas, descripcion
+                )
+                print(f"Trabajo registrado correctamente con ID {registro.id}.")
+            elif opcion == "5":
+                return "logout"
+            elif opcion == "6":
+                return "back"
+            else:
+                print("Opción no válida.")
+        except (ValueError, PermissionError) as exc:
+            print(f"Error: {exc}")
 
 
 def main():
@@ -310,29 +478,58 @@ def main():
         return
 
     while True:
+        try:
+            sesion = iniciar_sesion()
+            if sesion is None:
+                return
+        except pymysql.MySQLError:
+            print("No fue posible verificar las credenciales en MariaDB.")
+            return
+
+        cerrar_sesion = False
         print("\n========== ECOTECH ==========")
-        print("1. Empleados")
-        print("2. Departamentos")
-        print("3. Proyectos")
-        print("4. Registros de tiempo")
-        print("5. Consultar dólar observado")
-        print("0. Salir")
-        opcion = input("Seleccione una opción: ").strip()
-        if opcion == "1":
-            menu_empleados()
-        elif opcion == "2":
-            menu_departamentos()
-        elif opcion == "3":
-            menu_proyectos()
-        elif opcion == "4":
-            menu_registros()
-        elif opcion == "5":
-            mostrar_dolar_observado()
-        elif opcion == "0":
-            print("Hasta luego.")
-            break
-        else:
-            print("Opción no válida.")
+        while True:
+            if sesion["rol"] == "admin":
+                print("1. Empleados")
+                print("2. Departamentos")
+                print("3. Proyectos")
+                print("4. Registros de tiempo")
+                print("5. Registrar cuenta de empleado")
+                print("6. Consultar dólar observado")
+                print("9. Cerrar sesión")
+            else:
+                print("1. Mi cuenta")
+            print("0. Salir")
+            opcion = input("Seleccione una opción: ").strip()
+            if sesion["rol"] == "admin" and opcion == "1":
+                menu_empleados(sesion)
+            elif sesion["rol"] == "admin" and opcion == "2":
+                menu_departamentos(sesion)
+            elif sesion["rol"] == "admin" and opcion == "3":
+                menu_proyectos(sesion)
+            elif sesion["rol"] == "admin" and opcion == "4":
+                menu_registros(sesion)
+            elif sesion["rol"] == "admin" and opcion == "5":
+                registrar_cuenta_empleado(sesion)
+            elif sesion["rol"] == "admin" and opcion == "6":
+                mostrar_dolar_observado()
+            elif sesion["rol"] == "admin" and opcion == "9":
+                print("Sesión cerrada.")
+                cerrar_sesion = True
+                break
+            elif sesion["rol"] == "empleado" and opcion == "1":
+                resultado = menu_empleado(sesion)
+                if resultado == "logout":
+                    print("Sesión cerrada.")
+                    cerrar_sesion = True
+                    break
+            elif opcion == "0":
+                print("Hasta luego.")
+                return
+            else:
+                print("Opción no válida.")
+        if not cerrar_sesion:
+            return
 
 
 if __name__ == "__main__":

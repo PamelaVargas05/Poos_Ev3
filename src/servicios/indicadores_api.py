@@ -6,6 +6,8 @@ import requests
 
 
 URL_DOLAR = "https://mindicador.cl/api/dolar"
+TIMEOUT_CONEXION = 5
+TIMEOUT_LECTURA = 15
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,10 @@ def validar_respuesta_dolar(respuesta):
 
 
 def consultar_dolar():
-    respuesta = requests.get(URL_DOLAR, timeout=(3, 5))
+    respuesta = requests.get(
+        URL_DOLAR,
+        timeout=(TIMEOUT_CONEXION, TIMEOUT_LECTURA),
+    )
     respuesta.raise_for_status()
     try:
         datos = respuesta.json()

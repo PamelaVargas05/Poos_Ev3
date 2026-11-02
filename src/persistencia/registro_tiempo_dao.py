@@ -53,6 +53,21 @@ class RegistroTiempoDAO:
             conexion.close()
 
     @staticmethod
+    def listar_por_empleado(empleado_id):
+        conexion = abrir_conexion()
+        try:
+            cursor = conexion.cursor()
+            cursor.execute(
+                "SELECT id,fecha,horas,descripcion,empleado_id,proyecto_id "
+                "FROM registro_tiempo WHERE empleado_id=%s "
+                "ORDER BY fecha DESC,id DESC",
+                (empleado_id,),
+            )
+            return [RegistroTiempoDAO._fila_a_registro(f) for f in cursor.fetchall()]
+        finally:
+            conexion.close()
+
+    @staticmethod
     def actualizar(registro):
         conexion = None
         try:

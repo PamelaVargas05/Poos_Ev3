@@ -1,9 +1,13 @@
 import argparse
+import os
 
+from dominio.usuario import Usuario
 from dominio.departamento import Departamento
 from dominio.empleado import Empleado, EmpleadoContrata, EmpleadoPlanta
 from persistencia.departamento_dao import DepartamentoDAO
 from persistencia.empleado_dao import EmpleadoDAO
+from persistencia.usuario_dao import UsuarioDAO
+from seguridad.autenticacion import crear_hash
 
 
 DEPARTAMENTOS = (
@@ -278,6 +282,24 @@ def cargar_semilla(asignar_ana=False):
     )
 
 
+def crear_administrador():
+    """Crea una cuenta admin desde variables de entorno, sin sobrescribirla."""
+    nombre = os.getenv("ECOTECH_ADMIN_USUARIO")
+    clave = os.getenv("ECOTECH_ADMIN_PASSWORD")
+    if not nombre or not clave:
+        print("Administrador no creado: configure ECOTECH_ADMIN_USUARIO y "
+              "ECOTECH_ADMIN_PASSWORD para ejecutar esta semilla.")
+        return False
+    nombre = nombre.strip().lower()
+    if UsuarioDAO.buscar(nombre) is not None:
+        print(f"Administrador existente: {nombre}.")
+        return False
+    sal, clave_hash = crear_hash(clave)
+    UsuarioDAO.guardar(nombre, sal, clave_hash, rol=Usuario.ROLES_VALIDOS[0])
+    print(f"Administrador creado: {nombre}.")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Carga semillas idempotentes de EcoTech.")
     parser.add_argument(
@@ -285,8 +307,15 @@ def main():
         action="store_true",
         help="Asigna Ana Torres a Desarrollo de Software si existe sin departamento.",
     )
+    parser.add_argument(
+        "--crear-admin",
+        action="store_true",
+        help="Crea el administrador usando variables de entorno sin sobrescribir cuentas.",
+    )
     args = parser.parse_args()
     cargar_semilla(asignar_ana=args.asignar_ana)
+    if args.crear_admin:
+        crear_administrador()
 
 
 if __name__ == "__main__":
