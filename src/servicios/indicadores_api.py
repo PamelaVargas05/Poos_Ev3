@@ -1,20 +1,17 @@
-from dataclasses import dataclass
 from datetime import date, datetime
 import math
 
 import requests
 
+from dominio.indicador import Indicador
 
 URL_DOLAR = "https://mindicador.cl/api/dolar"
 TIMEOUT_CONEXION = 5
 TIMEOUT_LECTURA = 15
 
 
-@dataclass(frozen=True)
-class IndicadorDolar:
-    fecha: date
-    valor: float
-    unidad: str
+IndicadorDolar = Indicador
+FUENTE_DOLAR = "mindicador.cl"
 
 
 def _parsear_fecha(valor):
@@ -53,7 +50,16 @@ def validar_respuesta_dolar(respuesta):
             raise ValueError("El valor del dólar debe ser numérico.") from exc
         if not math.isfinite(valor) or valor <= 0:
             raise ValueError("El valor del dólar debe ser finito y mayor que cero.")
-        registros.append(IndicadorDolar(fecha=fecha, valor=valor, unidad="Pesos"))
+        registros.append(
+            Indicador(
+                codigo="dolar",
+                fuente=FUENTE_DOLAR,
+                fecha=fecha,
+                valor=valor,
+                unidad="Pesos",
+                verificado_en=datetime.now(),
+            )
+        )
 
     return max(registros, key=lambda indicador: indicador.fecha)
 

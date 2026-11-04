@@ -18,6 +18,7 @@ class Proyecto:
         self.descripcion = descripcion.strip()
         self.fecha_inicio = fecha_inicio or date.today().isoformat()
         self.activo = bool(activo)
+        self._empleados = []
 
 
     def asignar_empleado(self, empleado) -> bool:

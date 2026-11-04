@@ -50,6 +50,47 @@ class ProyectoDAO:
             conexion.close()
 
     @staticmethod
+    def listar_por_empleado(id_empleado):
+        conexion = None
+        try:
+            conexion = abrir_conexion()
+            cursor = conexion.cursor()
+            cursor.execute(
+                """
+                SELECT p.id, p.nombre, p.descripcion, p.fecha_inicio, p.activo
+                FROM proyecto p
+                INNER JOIN proyecto_empleado pe ON pe.proyecto_id = p.id
+                WHERE pe.empleado_id = %s
+                ORDER BY p.id
+                """,
+                (id_empleado,),
+            )
+            return [ProyectoDAO._fila_a_proyecto(fila) for fila in cursor.fetchall()]
+        finally:
+            if conexion:
+                conexion.close()
+
+    @staticmethod
+    def empleado_asignado(id_proyecto, id_empleado):
+        conexion = None
+        try:
+            conexion = abrir_conexion()
+            cursor = conexion.cursor()
+            cursor.execute(
+                """
+                SELECT 1
+                FROM proyecto_empleado
+                WHERE proyecto_id = %s AND empleado_id = %s
+                LIMIT 1
+                """,
+                (id_proyecto, id_empleado),
+            )
+            return cursor.fetchone() is not None
+        finally:
+            if conexion:
+                conexion.close()
+
+    @staticmethod
     def actualizar(proyecto):
         conexion = None
         try:
@@ -93,7 +134,11 @@ class ProyectoDAO:
             conexion = abrir_conexion()
             cursor = conexion.cursor()
             cursor.execute(
-                "INSERT INTO proyecto_empleado (proyecto_id,empleado_id) VALUES (%s,%s)",
+                """
+                INSERT INTO proyecto_empleado (proyecto_id,empleado_id)
+                VALUES (%s,%s)
+                ON DUPLICATE KEY UPDATE proyecto_id = VALUES(proyecto_id)
+                """,
                 (id_proyecto, id_empleado),
             )
             conexion.commit()
@@ -102,6 +147,48 @@ class ProyectoDAO:
             if conexion:
                 conexion.rollback()
             raise
+        finally:
+            if conexion:
+                conexion.close()
+
+    @staticmethod
+    def quitar_empleado(id_proyecto, id_empleado):
+        conexion = None
+        try:
+            conexion = abrir_conexion()
+            cursor = conexion.cursor()
+            cursor.execute(
+                """
+                DELETE FROM proyecto_empleado
+                WHERE proyecto_id = %s AND empleado_id = %s
+                """,
+                (id_proyecto, id_empleado),
+            )
+            conexion.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            if conexion:
+                conexion.rollback()
+            raise
+        finally:
+            if conexion:
+                conexion.close()
+
+    @staticmethod
+    def horas_registradas(id_proyecto, id_empleado):
+        conexion = None
+        try:
+            conexion = abrir_conexion()
+            cursor = conexion.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM registro_tiempo
+                WHERE proyecto_id = %s AND empleado_id = %s
+                """,
+                (id_proyecto, id_empleado),
+            )
+            return int(cursor.fetchone()[0])
         finally:
             if conexion:
                 conexion.close()

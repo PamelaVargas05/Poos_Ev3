@@ -39,9 +39,41 @@ def crear_tablas():
                 activo BOOLEAN NOT NULL DEFAULT TRUE
             ) ENGINE=InnoDB
             """,
+            """
+            CREATE TABLE IF NOT EXISTS indicador_api (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                fuente VARCHAR(150) NOT NULL,
+                codigo VARCHAR(50) NOT NULL,
+                fecha DATE NOT NULL,
+                valor DECIMAL(18,6) NOT NULL,
+                unidad VARCHAR(50) NOT NULL,
+                verificado_en DATETIME NOT NULL,
+                CONSTRAINT uq_indicador_fuente_codigo_fecha
+                    UNIQUE (fuente, codigo, fecha)
+            ) ENGINE=InnoDB
+            """,
         ]
         for sql in sentencias:
             cursor.execute(sql)
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'indicador_api'
+              AND INDEX_NAME = 'uq_indicador_fuente_codigo_fecha'
+            LIMIT 1
+            """
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                """
+                ALTER TABLE indicador_api
+                ADD CONSTRAINT uq_indicador_fuente_codigo_fecha
+                UNIQUE (fuente, codigo, fecha)
+                """
+            )
 
         # Tabla para el acceso seguro de la Unidad 3.
         cursor.execute("""

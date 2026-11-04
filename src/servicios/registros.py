@@ -36,6 +36,8 @@ def registrar_registro_propio(sesion, proyecto_id, fecha, horas, descripcion):
         raise PermissionError("La cuenta no está asociada a un empleado.")
     if ProyectoDAO.buscar_por_id(proyecto_id) is None:
         raise ValueError("El proyecto indicado no existe.")
+    if not ProyectoDAO.empleado_asignado(proyecto_id, empleado_id):
+        raise PermissionError("Solo puedes registrar horas en proyectos asignados a tu cuenta.")
     if fecha:
         try:
             date.fromisoformat(fecha)

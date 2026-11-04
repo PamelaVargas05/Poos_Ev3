@@ -28,3 +28,36 @@ classDiagram
 
     Empleado <|-- EmpleadoPlanta
     Empleado <|-- EmpleadoContrata
+
+    class Indicador {
+        +codigo: str
+        +fuente: str
+        +fecha: date
+        +valor: float
+        +unidad: str
+        +verificado_en: datetime
+    }
+
+    class IndicadorDAO {
+        +guardar_o_actualizar(indicador)
+        +listar()
+        +buscar_ultimo()
+    }
+
+    class ProyectoDAO {
+        +listar_por_empleado(id_empleado)
+        +empleado_asignado(id_proyecto, id_empleado)
+    }
+
+    class RegistroTiempo {
+        +empleado_id: int
+        +proyecto_id: int
+        +horas: float
+        +fecha: date
+    }
+
+    IndicadorDAO ..> Indicador : persiste
+    ProyectoDAO ..> Empleado : verifica asignación
+    RegistroTiempo --> Empleado
+    RegistroTiempo --> Proyecto
+    Proyecto "0..*" -- "0..*" Empleado : proyecto_empleado

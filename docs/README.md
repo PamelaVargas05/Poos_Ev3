@@ -170,5 +170,23 @@ aplicación.
 | Simulada | Timeout/problema de red | Propagado para manejo del menú |
 
 La importación de `requests` fue comprobada en `.venv` con la versión
-instalada. No se usó `verify=False`, no se agregaron credenciales y el dólar
-no se guardó en MariaDB.
+instalada. No se usó `verify=False` ni se agregaron credenciales. La respuesta
+validada se deserializa en `dominio.Indicador` y se guarda en la tabla
+`indicador_api` mediante un UPSERT MariaDB con clave única
+`(fuente, codigo, fecha)`. El historial se consulta sin llamar a la API.
+Ante timeout, error HTTP, JSON inválido o conexión fallida, el servicio
+consulta el último respaldo local y muestra su fecha y origen; si no existe,
+informa que no hay datos disponibles.
+
+## Actividad 3: persistencia, roles y respaldo
+
+Ambos roles tienen el submenú de indicadores. El administrador mantiene sus
+CRUD y el empleado solo puede operar sobre su perfil, sus registros y sus
+proyectos asignados. `registrar_registro_propio()` obtiene el empleado desde la
+sesión y verifica la relación `proyecto_empleado` antes de insertar horas.
+La creación idempotente de tablas no elimina tablas ni datos existentes.
+
+La prueba real de inicialización de MariaDB se ejecutó con
+`python -m persistencia.crear_bd`. Las validaciones de JSON, timeout,
+respaldo y sesión se ejecutaron con respuestas y dependencias simuladas; la
+consulta externa real queda sujeta a la disponibilidad de `mindicador.cl`.

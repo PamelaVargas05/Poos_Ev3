@@ -6,7 +6,7 @@ from dominio.departamento import Departamento
 from dominio.empleado import Empleado, EmpleadoPlanta, EmpleadoContrata
 from dominio.proyecto import Proyecto
 from dominio.registro_tiempo import RegistroTiempo
-from servicios.indicadores_api import consultar_dolar
+from servicios.indicadores import consultar_dolar, listar_historial
 import requests
 import pymysql
 from getpass import getpass
@@ -17,6 +17,14 @@ from servicios.empleados import (
     consultar_datos_propios,
 )
 from servicios.permisos import exigir_admin, exigir_sesion
+from servicios.proyectos import (
+    asignar_empleado,
+    listar_empleados_asignados,
+    listar_empleados_disponibles,
+    listar_proyectos,
+    listar_proyectos_propios,
+    quitar_asignacion,
+)
 from servicios.registros import (
     actualizar_registro,
     buscar_registro,
@@ -93,36 +101,49 @@ def listar_departamentos():
         print(item)
 
 
-def mostrar_dolar_observado():
+def mostrar_dolar_observado(sesion):
     try:
-        indicador = consultar_dolar()
+        resultado = consultar_dolar(sesion)
+        if resultado.indicador is None:
+            print(resultado.mensaje)
+            return
+        indicador = resultado.indicador
         print(
-            f"Dólar observado: ${indicador.valor:,.2f} CLP por USD | "
-            f"Fecha: {indicador.fecha.isoformat()} | Fuente: mindicador.cl"
+            f"{resultado.mensaje}\n"
+            f"Dólar observado: ${indicador.valor:,.2f} {indicador.unidad} por USD | "
+            f"Fecha: {indicador.fecha.isoformat()} | Origen: {resultado.origen}"
         )
-    except requests.Timeout:
-        print(
-            "El servicio del dólar tardó demasiado en responder. "
-            "Intente nuevamente más tarde."
-        )
-    except requests.ConnectionError:
-        print(
-            "No fue posible conectarse al servicio del dólar. "
-            "Revise su conexión e intente nuevamente."
-        )
-    except requests.HTTPError as exc:
-        estado = exc.response.status_code if exc.response is not None else "desconocido"
-        print(
-            f"El servicio del dólar no está disponible (respuesta HTTP {estado}). "
-            "Intente nuevamente más tarde."
-        )
-    except requests.RequestException:
-        print(
-            "Ocurrió un problema de comunicación con el servicio del dólar. "
-            "La aplicación continuará funcionando."
-        )
-    except ValueError as exc:
-        print(f"No fue posible validar la respuesta del dólar: {exc}")
+    except (requests.RequestException, ValueError, PermissionError, pymysql.MySQLError) as exc:
+        print(f"No fue posible consultar el dólar: {exc}")
+
+
+def menu_indicadores(sesion):
+    exigir_sesion(sesion)
+    while True:
+        print("\n--- INDICADORES ---")
+        print("1. Consultar dólar actualizado")
+        print("2. Ver historial del dólar")
+        print("0. Volver")
+        opcion = input("Opción: ").strip()
+        try:
+            if opcion == "1":
+                mostrar_dolar_observado(sesion)
+            elif opcion == "2":
+                historial = listar_historial(sesion)
+                if not historial:
+                    print("Todavía no existen datos guardados.")
+                for indicador in historial:
+                    print(
+                        f"Fecha: {indicador.fecha.isoformat()} | "
+                        f"Valor: ${indicador.valor:,.2f} | "
+                        f"Unidad: {indicador.unidad} | Fuente: {indicador.fuente}"
+                    )
+            elif opcion == "0":
+                return
+            else:
+                print("Opción no válida.")
+        except (pymysql.MySQLError, PermissionError, ValueError) as exc:
+            print(f"No fue posible completar la operación: {exc}")
 
 
 def menu_departamentos(sesion):
@@ -251,6 +272,7 @@ def menu_proyectos(sesion):
         print("4. Eliminar")
         print("5. Asignar empleado")
         print("6. Ver empleados asignados")
+        print("7. Quitar asignación")
         print("0. Volver")
         op = input("Opción: ").strip()
         try:
@@ -259,7 +281,7 @@ def menu_proyectos(sesion):
                 ProyectoDAO.insertar(p)
                 print(f"Proyecto creado con ID {p.id}.")
             elif op == "2":
-                items = ProyectoDAO.listar()
+                items = listar_proyectos(sesion)
                 if not items:
                     print("No hay proyectos.")
                 for item in items:
@@ -275,14 +297,38 @@ def menu_proyectos(sesion):
             elif op == "4":
                 print("Eliminado." if ProyectoDAO.eliminar(pedir_entero("ID: ")) else "No encontrado.")
             elif op == "5":
-                ProyectoDAO.asignar_empleado(pedir_entero("ID proyecto: "), pedir_entero("ID empleado: "))
-                print("Empleado asignado al proyecto.")
+                proyecto_id = pedir_entero("ID proyecto: ")
+                if ProyectoDAO.buscar_por_id(proyecto_id) is None:
+                    print("Proyecto no encontrado.")
+                    continue
+                print("Empleados disponibles:")
+                for empleado in listar_empleados_disponibles(sesion):
+                    print(empleado)
+                empleado_id = pedir_entero("ID empleado: ")
+                if asignar_empleado(sesion, proyecto_id, empleado_id):
+                    print("Empleado asignado al proyecto.")
+                else:
+                    print("El empleado ya estaba asignado a este proyecto.")
             elif op == "6":
-                items = ProyectoDAO.listar_empleados(pedir_entero("ID proyecto: "))
+                items = listar_empleados_asignados(sesion, pedir_entero("ID proyecto: "))
                 if not items:
                     print("No hay empleados asignados.")
                 for item in items:
                     print(item)
+            elif op == "7":
+                proyecto_id = pedir_entero("ID proyecto: ")
+                items = listar_empleados_asignados(sesion, proyecto_id)
+                if not items:
+                    print("No hay empleados asignados.")
+                    continue
+                print("Empleados asignados:")
+                for item in items:
+                    print(item)
+                empleado_id = pedir_entero("ID empleado a quitar: ")
+                if quitar_asignacion(sesion, proyecto_id, empleado_id):
+                    print("Asignación quitada.")
+                else:
+                    print("La asignación no existe.")
             elif op == "0":
                 return
             else:
@@ -411,6 +457,39 @@ def iniciar_sesion():
     return None
 
 
+def menu_perfil(sesion):
+    exigir_sesion(sesion)
+    while True:
+        print("\n--- MI PERFIL ---")
+        print("1. Consultar mis datos")
+        print("2. Modificar mi nombre y correo")
+        print("3. Volver")
+        opcion = input("Seleccione una opción: ").strip()
+        try:
+            if opcion == "1":
+                empleado = consultar_datos_propios(sesion)
+                print(empleado if empleado is not None else "La cuenta no está asociada a un empleado.")
+            elif opcion == "2":
+                empleado = consultar_datos_propios(sesion)
+                if empleado is None:
+                    print("La cuenta no está asociada a un empleado.")
+                    continue
+                nombre = input(
+                    f"Nombre [{empleado.nombre}]: "
+                ).strip() or empleado.nombre
+                correo = input(
+                    f"Correo [{empleado.correo}]: "
+                ).strip() or empleado.correo
+                actualizar_datos_propios(sesion, nombre, correo)
+                print("Datos actualizados.")
+            elif opcion == "3":
+                return
+            else:
+                print("Opción no válida.")
+        except (ValueError, PermissionError) as exc:
+            print(f"Error: {exc}")
+
+
 def menu_empleado(sesion):
     exigir_sesion(sesion)
     while True:
@@ -418,9 +497,11 @@ def menu_empleado(sesion):
         print("1. Consultar mis datos")
         print("2. Modificar nombre y correo")
         print("3. Consultar mis registros")
-        print("4. Registrar trabajo realizado")
-        print("5. Cerrar sesión")
-        print("6. Volver")
+        print("4. Consultar mis proyectos asignados")
+        print("5. Registrar trabajo realizado")
+        print("6. Indicadores y dólar")
+        print("7. Cerrar sesión")
+        print("8. Volver")
         opcion = input("Seleccione una opción: ").strip()
         try:
             if opcion == "1":
@@ -441,11 +522,18 @@ def menu_empleado(sesion):
                 for registro in registros:
                     print(registro)
             elif opcion == "4":
-                proyectos = ProyectoDAO.listar()
+                proyectos = listar_proyectos_propios(sesion)
                 if not proyectos:
-                    print("No hay proyectos disponibles para registrar trabajo.")
+                    print("No tienes proyectos asignados.")
                     continue
-                print("Proyectos disponibles:")
+                for proyecto in proyectos:
+                    print(proyecto)
+            elif opcion == "5":
+                proyectos = listar_proyectos_propios(sesion)
+                if not proyectos:
+                    print("No tienes proyectos asignados para registrar trabajo.")
+                    continue
+                print("Proyectos asignados:")
                 for proyecto in proyectos:
                     print(proyecto)
                 proyecto_id = pedir_entero("ID proyecto: ")
@@ -458,9 +546,11 @@ def menu_empleado(sesion):
                     sesion, proyecto_id, fecha, horas, descripcion
                 )
                 print(f"Trabajo registrado correctamente con ID {registro.id}.")
-            elif opcion == "5":
-                return "logout"
             elif opcion == "6":
+                menu_indicadores(sesion)
+            elif opcion == "7":
+                return "logout"
+            elif opcion == "8":
                 return "back"
             else:
                 print("Opción no válida.")
@@ -496,6 +586,7 @@ def main():
                 print("4. Registros de tiempo")
                 print("5. Registrar cuenta de empleado")
                 print("6. Consultar dólar observado")
+                print("7. Mi perfil")
                 print("9. Cerrar sesión")
             else:
                 print("1. Mi cuenta")
@@ -512,7 +603,9 @@ def main():
             elif sesion["rol"] == "admin" and opcion == "5":
                 registrar_cuenta_empleado(sesion)
             elif sesion["rol"] == "admin" and opcion == "6":
-                mostrar_dolar_observado()
+                menu_indicadores(sesion)
+            elif sesion["rol"] == "admin" and opcion == "7":
+                menu_perfil(sesion)
             elif sesion["rol"] == "admin" and opcion == "9":
                 print("Sesión cerrada.")
                 cerrar_sesion = True
